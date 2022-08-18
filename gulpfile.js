@@ -16,31 +16,39 @@ const newer = require('gulp-newer')
 const browsersync = require('browser-sync').create()
 const del = require('del')
 const svgSprite = require('gulp-svg-sprite')
+const	svgmin = require('gulp-svgmin')
+const	cheerio = require('gulp-cheerio')
+const	replace = require('gulp-replace')
 
 
-// Пути исходных файлов src и пути к результирующим файлам dest
+// Пути исходных файлов app и пути к результирующим файлам dest
 const paths = {
   html: {
-    src: ['src/*.html', 'src/*.pug'],
-    dest: 'dist/'
+    src: ['app/*.html', 'app/**/*.pug'],
+    dest: 'build/'
   },
   styles: {
-    src: ['src/sass/**/*.sass', 'src/scss/**/*.scss', 'src/css/**/*.css'],
-    dest: 'dist/css/'
+    all: ['app/sass/**/*.sass', 'app/scss/**/*.scss', 'app/css/**/*.css'],
+    src: ['app/sass/*.sass', 'app/scss/*.scss', 'app/css/*.css'],
+    dest: 'build/css/'
   },
   scripts: {
-    src: ['src/js/**/*.js'],
-    dest: 'dist/js/'
+    src: 'app/js/**/*.js',
+    dest: 'build/js/'
   },
   images: {
-    src: 'src/img/**',
-    dest: 'dist/img/'
+    src: ['app/images/*.jpg','app/images/*.png'],
+    dest: 'build/images/'
+  },
+  svg: {
+    src: 'app/images/svg/*.svg',
+    dest: 'build/images/'
   }
 }
 
-// Очистить каталог dist, удалить все кроме изображений
+// Очистить каталог build, удалить все кроме изображений
 function clean() {
-  return del(['dist/*', '!dist/img'])
+  return del(['build/*', '!build/images'])
 }
 
 // Обработка html и pug
@@ -84,7 +92,7 @@ function scripts() {
   .pipe(babel({
     presets: ['@babel/env']
   }))
-  .pipe(uglify())
+  // .pipe(uglify())
   .pipe(concat('main.min.js'))
   .pipe(sourcemaps.write('.'))
   .pipe(size({
@@ -107,18 +115,49 @@ function img() {
   .pipe(gulp.dest(paths.images.dest))
 }
 
+// Сжатие и создание svg sprite
+function svg() {
+  return gulp.src(paths.svg.src)
+  .pipe(svgmin({
+    js2svg: {
+      pretty: true
+    }
+  }))
+  .pipe(cheerio({
+    run: function ($) {
+      $('[fill]').removeAttr('fill');
+      $('[stroke]').removeAttr('stroke');
+      $('[style]').removeAttr('style');
+    },
+    parserOptions: {xmlMode: true}
+  }))
+  .pipe(replace('&gt;', '>'))
+  .pipe(svgSprite({
+    mode: {
+      symbol: {
+        sprite: "../sprite.svg"
+      }
+    },
+  }))
+  .pipe(size({
+    showFiles:true
+  }))
+  .pipe(gulp.dest(paths.images.dest))
+}
+
 // Отслеживание изменений в файлах и запуск лайв сервера
 function watch() {
   browsersync.init({
     server: {
-        baseDir: "./dist"
+        baseDir: "./build"
     }
   })
   gulp.watch(paths.html.dest).on('change', browsersync.reload)
   gulp.watch(paths.html.src, html)
-  gulp.watch(paths.styles.src, styles)
+  gulp.watch(paths.styles.all, styles)
   gulp.watch(paths.scripts.src, scripts)
   gulp.watch(paths.images.src, img)
+  gulp.watch(paths.svg.src, svg)
 }
 
 // Таски для ручного запуска с помощью gulp clean, gulp html и т.д.
@@ -128,7 +167,8 @@ exports.html = html
 exports.styles = styles
 exports.scripts = scripts
 exports.img = img
+exports.svg = svg
 exports.watch = watch
 
 // Таск, который выполняется по команде gulp
-exports.default = gulp.series(clean, html, gulp.parallel(styles, scripts, img), watch)
+exports.default = gulp.series(clean, html, gulp.parallel(styles, scripts, img, svg), watch)
